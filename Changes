@@ -1,0 +1,50 @@
+Revision history for Pipe-Declare
+
+0.02    2026-06-20
+        - Fix load failure on perl < 5.21.x (undefined symbols) for the
+          MIN_PERL_VERSION 5.014 the dist already advertises. Three core API
+          functions used by the XS are post-5.14 and not emulated by ppport.h:
+          op_convert_list (5.21.6, -> Perl_convert), pad_findmy_pvn (5.15.1
+          rename of pad_findmy), and op_sibling_splice (5.21.2), which is now
+          backported on top of ppport.h's OpSIBLING/Op*SIB_set accessors.
+
+0.01    2026-06-19
+        First release.
+
+        - `pipe { HEAD |> step |> step ... }` block keyword as a true
+          lexical pragma (gated on $^H{'Pipe::Declare'}), works on
+          perl 5.14+.
+        - Global infix `|>` operator via PL_infix_plugin on perl 5.38+,
+          registered at INFIX_PREC_LOGICAL_OR (same as `||` - tighter
+          than `=`, looser than `+`). Left-associative; chains
+          naturally. Lexically scoped on the same pragma.
+        - Head forms: $var, literal, [LIST] arrayref, bareword call
+          (qualified or not), (EXPR).
+        - Step forms (block): bareword nullary, bareword with arglist
+          (with `_` placeholder substitution), qualified bareword,
+          \&name, sub { ... }, $cv, ->method, ->method(args), ->{KEY},
+          ->[IDX], map / grep / tap blocks.
+        - Step forms (infix): bareword call, method call, coderef
+          expression. Block-only steps (map/grep/tap, _ placeholder,
+          standalone ->method / ->{key} / ->[idx]) are block-form only.
+        - Head evaluated exactly once.
+        - Intermediate steps run in scalar context; final step inherits
+          the surrounding context (scalar / list / void).
+        - Specific croak messages for every parser-detected error.
+        - Zero CPAN dependencies; core perl C API only, MIN_PERL 5.014.
+        - 131 tests across t/00..t/10.
+
+        Performance (perl 5.42, Apple Silicon; see xt/bench.pl):
+        - Nest-when-safe lowering: when every step uses the topic
+          exactly once (the common case), the pipe lowers to a fully
+          nested call expression with no pad temp and no SASSIGN ops.
+          Bench-measured within 1-2% of hand-written nested calls for
+          bareword chains, call-with-args, and method chains.
+        - SASSIGN-chain fallback: used only when a step references the
+          topic 2+ times (e.g. `f(_, _, _)`); preserves intermediate-
+          scalar-context semantics.
+        - map / grep block steps build direct OP_MAPSTART / OP_GREPSTART
+          optrees via op_convert_list; ~24% overhead remaining is the
+          cost of wrapping each map/grep result in [ ... ] to keep the
+          topic as an arrayref across steps.
+
